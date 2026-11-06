@@ -1,3 +1,16 @@
+<!-- ai2-fork-notice:start -->
+> [!IMPORTANT]
+> **This is a fork of [omnigent-ai/omnigent][ai2-upstream] and is not the
+> official project.** It tracks upstream with Ai2-specific changes on top.
+>
+> Modified by The Allen Institute for Artificial Intelligence.
+>
+> For the official project, releases, and support, go to
+> [omnigent-ai/omnigent][ai2-upstream].
+
+[ai2-upstream]: https://github.com/omnigent-ai/omnigent
+<!-- ai2-fork-notice:end -->
+
 <div align="center">
 
 # <img src="https://raw.githubusercontent.com/omnigent-ai/omnigent/main/docs/images/omnigent-logo.svg" alt="" height="38" valign="middle" /> Omnigent
