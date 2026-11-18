@@ -9,8 +9,28 @@
 # A README.md conflict is resolved deterministically: take upstream's README
 # verbatim and re-derive the notice. The notice is the only Ai2 change to that
 # file, so there is nothing else in it to preserve.
+#
+# GitHub registers an upstream workflow only when a push or event triggers it,
+# and only a registered workflow can be disabled. So the sync disables upstream
+# workflows twice: before it starts, to catch up, and after --push.
+#
+#   ai2/sync-upstream.sh          # sync; print the push commands
+#   ai2/sync-upstream.sh --push   # sync, push, then disable new upstream workflows
+#
+# AI2_SYNC_SKIP_DISABLE=1 skips the GitHub API calls, for clones whose origin
+# is not the GitHub fork (test-sync-upstream.sh).
 
 set -euo pipefail
+
+push=0
+case "${1:-}" in
+  "") ;;
+  --push) push=1 ;;
+  *)
+    printf 'usage: %s [--push]\n' "$0" >&2
+    exit 2
+    ;;
+esac
 
 UPSTREAM_SLUG="omnigent-ai/omnigent"
 UPSTREAM_REMOTE="upstream"
@@ -38,6 +58,17 @@ done
 say() { printf '\n==> %s\n' "$1"; }
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 
+disable_upstream_workflows() {
+  if [ "${AI2_SYNC_SKIP_DISABLE:-0}" = "1" ]; then
+    printf 'skipping (AI2_SYNC_SKIP_DISABLE=1)\n'
+    return 0
+  fi
+  python3 "$workflows_script" --disable-upstream \
+    --upstream "$UPSTREAM_REMOTE/$MIRROR_BRANCH" \
+    || die "could not disable upstream workflows. Check 'gh auth status', then run:
+    python3 ai2/derive_workflows.py --disable-upstream"
+}
+
 if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
   die "working tree has uncommitted changes; commit or stash first"
 fi
@@ -53,6 +84,11 @@ fi
 
 say "fetching $UPSTREAM_REMOTE"
 git fetch --prune "$UPSTREAM_REMOTE"
+
+# Catches workflows registered since the last sync, including after a push
+# made without --push.
+say "disabling upstream workflows registered since the last sync"
+disable_upstream_workflows
 
 # --- mirror branch: fast-forward only -----------------------------------
 say "fast-forwarding $MIRROR_BRANCH"
@@ -130,8 +166,26 @@ if ! python3 "$check_script" --ref "$FORK_BRANCH" \
 notice. Add the line shown above, commit it, then push."
 fi
 
-say "done. $FORK_BRANCH is synced; review, then push:"
-printf '    git push origin %s\n' "$MIRROR_BRANCH"
-printf '    git push --force-with-lease origin %s\n' "$FORK_BRANCH"
-printf 'then disable any upstream workflow GitHub registered on the push:\n'
-printf '    python3 ai2/derive_workflows.py --disable-upstream\n'
+if [ "$push" = "0" ]; then
+  say "done. $FORK_BRANCH is synced; review, then push:"
+  printf '    git push origin %s\n' "$MIRROR_BRANCH"
+  printf '    git push --force-with-lease origin %s\n' "$FORK_BRANCH"
+  printf 'then disable any upstream workflow GitHub registered on the push:\n'
+  printf '    python3 ai2/derive_workflows.py --disable-upstream\n'
+  exit 0
+fi
+
+say "pushing $MIRROR_BRANCH and $FORK_BRANCH"
+git push origin "$MIRROR_BRANCH"
+git push --force-with-lease origin "$FORK_BRANCH"
+
+# Registration can trail the push by a few seconds, so disable twice. The
+# catch-up at the start of the next sync covers anything later still.
+say "disabling upstream workflows registered by the push"
+disable_upstream_workflows
+if [ "${AI2_SYNC_SKIP_DISABLE:-0}" != "1" ]; then
+  sleep 30
+  disable_upstream_workflows
+fi
+
+say "done. $FORK_BRANCH is synced and pushed"

@@ -78,6 +78,17 @@ git push origin main
 git push --force-with-lease origin ai2-main
 ```
 
+`--push` does those pushes after the checks pass, then disables the upstream
+workflows that GitHub registered on the push:
+
+```sh
+ai2/sync-upstream.sh --push
+```
+
+Every sync starts by disabling upstream workflows registered since the last
+sync, so a push made without `--push` is covered on the next sync. Both steps
+need `gh` signed in as a fork admin.
+
 Treat `ai2-main` as a branch that gets rewritten. Base long-lived work on a
 branch of your own and rebase it when `ai2-main` moves.
 
@@ -157,7 +168,8 @@ upstream workflow on the fork, add it to `ALLOWLIST` and re-run the script.
 
 GitHub can disable a workflow only after the workflow is triggered for the
 first time. A workflow that upstream adds runs once on the fork before
-`--disable-upstream` can disable it. Run `--disable-upstream` after each push.
+`--disable-upstream` can disable it. `sync-upstream.sh` runs `--disable-upstream`
+before each sync and after `--push`.
 
 ## What needs a notice
 

@@ -21,6 +21,8 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# The scratch clone's origin is this repository, not the GitHub fork.
+export AI2_SYNC_SKIP_DISABLE=1
 TD="$(mktemp -d)"
 MARKER="UPSTREAM-EDITED-THE-HEADER"
 CI_MARKER="UPSTREAM-EDITED-CI"
@@ -60,6 +62,9 @@ git clone -q "$REPO" "$TD/work"
 cd "$TD/work"
 git checkout -q -B main origin/main
 git checkout -q -B ai2-main origin/ai2-main
+# --push must never reach this repository; give it a scratch origin instead.
+git clone -q --bare "$REPO" "$TD/origin.git"
+git remote set-url origin "$TD/origin.git"
 
 # Test the working-tree scripts rather than the committed ones, so this catches
 # a regression before it is committed. Derive the workflow copies too, so
@@ -156,6 +161,51 @@ if [ "$(git rev-parse main)" = "$(git rev-parse upstream/main)" ]; then
   pass "main == upstream/main"
 else
   fail "main diverged from upstream"
+fi
+
+if grep -q 'disabling upstream workflows registered since the last sync' "$TD/sync.log"; then
+  pass "sync runs the catch-up disable before syncing"
+else
+  fail "sync skipped the catch-up disable"
+fi
+
+if grep -q 'git push origin' "$TD/sync.log" && [ "$(git -C "$TD/origin.git" rev-parse ai2-main)" != "$(git rev-parse ai2-main)" ]; then
+  pass "without --push, sync prints the push commands and pushes nothing"
+else
+  fail "sync without --push pushed, or printed no push commands"
+fi
+
+say "sync --push pushes both branches, then disables"
+set +e
+./ai2/sync-upstream.sh --push > "$TD/sync-push.log" 2>&1
+rc_push=$?
+set -e
+if [ "$rc_push" -ne 0 ]; then
+  tail -20 "$TD/sync-push.log"
+  fail "sync --push exited $rc_push"
+fi
+
+if [ "$(git -C "$TD/origin.git" rev-parse ai2-main)" = "$(git rev-parse ai2-main)" ] \
+  && [ "$(git -C "$TD/origin.git" rev-parse main)" = "$(git rev-parse upstream/main)" ]; then
+  pass "--push updated main and ai2-main on origin"
+else
+  fail "--push did not update origin"
+fi
+
+if grep -q 'disabling upstream workflows registered by the push' "$TD/sync-push.log"; then
+  pass "--push runs the disable after pushing"
+else
+  fail "--push skipped the post-push disable"
+fi
+
+set +e
+./ai2/sync-upstream.sh --bogus > /dev/null 2>&1
+rc_usage=$?
+set -e
+if [ "$rc_usage" -eq 2 ]; then
+  pass "an unknown option is rejected"
+else
+  fail "an unknown option exited $rc_usage, expected 2"
 fi
 
 say "a modified upstream file with no notice must fail the sync"

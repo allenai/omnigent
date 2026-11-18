@@ -15,6 +15,7 @@ Do not do their work by hand. Do not write their output from memory.
 | Write or edit an `ai2-*.yaml` workflow copy | `python3 ai2/derive_workflows.py` |
 | Disable upstream workflows on the fork | `python3 ai2/derive_workflows.py --disable-upstream` |
 | Merge or rebase upstream | `ai2/sync-upstream.sh` |
+| Push after a sync | `ai2/sync-upstream.sh --push` |
 | Resolve a `README.md` conflict | `ai2/sync-upstream.sh` resolves it |
 | Test a change to these scripts | `ai2/test-sync-upstream.sh` |
 
