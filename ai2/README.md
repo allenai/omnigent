@@ -135,6 +135,30 @@ Before opening an upstream PR, confirm the branch carries no Ai2 notices:
 python3 ai2/check_modified_notices.py --expect-none --ref feat/my-fix
 ```
 
+### `derive_workflows.py`
+
+Controls which GitHub Actions workflows run on the fork.
+
+Upstream's workflow files stay on `ai2-main` unchanged, because upstream's tests
+read them. They are disabled on the fork through the GitHub API. Each workflow
+in `ALLOWLIST` is copied to `.github/workflows/ai2-<name>.yaml` with only its
+triggers replaced: the copy runs on pushes to `ai2-main` and on pull requests
+that target it. The jobs are upstream's.
+
+```sh
+python3 ai2/derive_workflows.py                               # write the copies
+python3 ai2/derive_workflows.py --check                       # exit 1 if stale
+python3 ai2/derive_workflows.py --disable-upstream --dry-run  # list, change nothing
+python3 ai2/derive_workflows.py --disable-upstream            # disable on GitHub
+```
+
+`sync-upstream.sh` re-derives the copies after each rebase. To run another
+upstream workflow on the fork, add it to `ALLOWLIST` and re-run the script.
+
+GitHub can disable a workflow only after the workflow is triggered for the
+first time. A workflow that upstream adds runs once on the fork before
+`--disable-upstream` can disable it. Run `--disable-upstream` after each push.
+
 ## What needs a notice
 
 Only files that **differ from upstream**. Files Ai2 **added** are its own work
