@@ -3,7 +3,8 @@
 #
 #   main      stays byte-identical to upstream (fast-forward only), so PRs
 #             cut back to upstream carry no Ai2 content.
-#   ai2-main  gets upstream merged in, then the fork notice re-applied.
+#   ai2-main  gets upstream merged in, then the fork notice and the ai2-*
+#             workflow copies re-derived.
 #
 # A README.md conflict is resolved deterministically: take upstream's README
 # verbatim and re-derive the notice. The notice is the only Ai2 change to that
@@ -21,11 +22,13 @@ FORK_BRANCH="ai2-main"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 notice_script="$script_dir/apply_notice.py"
 check_script="$script_dir/check_modified_notices.py"
+workflows_script="$script_dir/derive_workflows.py"
+workflow_dir=".github/workflows"
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-for required in "$notice_script" "$check_script"; do
+for required in "$notice_script" "$check_script" "$workflows_script"; do
   [ -f "$required" ] || {
     printf 'error: cannot find %s\n' "$required" >&2
     exit 1
@@ -105,6 +108,18 @@ fi
 
 python3 "$notice_script" --check
 
+# The ai2-* copies carry upstream's jobs, so upstream job changes must reach
+# them on every sync.
+say "re-deriving the ai2-* workflow copies"
+python3 "$workflows_script" --upstream "$UPSTREAM_REMOTE/$MIRROR_BRANCH"
+
+if [ -n "$(git status --porcelain -- "$workflow_dir")" ]; then
+  git add -A -- "$workflow_dir"
+  git commit -m "chore(ai2): refresh workflow copies after upstream sync"
+fi
+
+python3 "$workflows_script" --check --upstream "$UPSTREAM_REMOTE/$MIRROR_BRANCH"
+
 # The fork notice is only half the obligation. Check section 4(b) on every file
 # that differs from upstream, so a missing notice stops the push rather than
 # reaching the published fork.
@@ -118,3 +133,5 @@ fi
 say "done. $FORK_BRANCH is synced; review, then push:"
 printf '    git push origin %s\n' "$MIRROR_BRANCH"
 printf '    git push --force-with-lease origin %s\n' "$FORK_BRANCH"
+printf 'then disable any upstream workflow GitHub registered on the push:\n'
+printf '    python3 ai2/derive_workflows.py --disable-upstream\n'

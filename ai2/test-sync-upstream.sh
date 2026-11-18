@@ -23,6 +23,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TD="$(mktemp -d)"
 MARKER="UPSTREAM-EDITED-THE-HEADER"
+CI_MARKER="UPSTREAM-EDITED-CI"
 
 cleanup() {
   if [ "${KEEP:-0}" = "1" ]; then
@@ -48,8 +49,10 @@ cd "$TD/fake-upstream"
   cat README.md
 } > README.new
 mv README.new README.md
+# An upstream job change must reach the ai2-ci.yaml copy.
+printf '# %s\n' "$CI_MARKER" >> .github/workflows/ci.yml
 git -c user.email=test@invalid -c user.name=test commit -q -am \
-  "upstream: add a badge at the top of README"
+  "upstream: add a badge at the top of README, edit CI"
 echo "upstream README line 1: $(head -1 README.md)"
 
 say "clone this repository as the working copy"
@@ -59,9 +62,12 @@ git checkout -q -B main origin/main
 git checkout -q -B ai2-main origin/ai2-main
 
 # Test the working-tree scripts rather than the committed ones, so this catches
-# a regression before it is committed.
+# a regression before it is committed. Derive the workflow copies too, so
+# ai2-main starts in the state the sync must preserve.
 cp "$REPO"/ai2/*.py "$REPO"/ai2/*.sh ai2/
-git -c user.email=test@invalid -c user.name=test commit -q --amend --no-edit -a
+python3 ai2/derive_workflows.py > /dev/null
+git add -A ai2 .github/workflows
+git -c user.email=test@invalid -c user.name=test commit -q --amend --no-edit
 
 git remote add upstream "$TD/fake-upstream"
 echo "ai2-main: $(git log --oneline -1)"
@@ -112,6 +118,24 @@ if python3 ai2/check_modified_notices.py --ref ai2-main > /dev/null 2>&1; then
   pass "section 4(b) check clean"
 else
   fail "4(b) check failed"
+fi
+
+if grep -q "$CI_MARKER" .github/workflows/ai2-ci.yaml; then
+  pass "upstream's CI change reached ai2-ci.yaml"
+else
+  fail "ai2-ci.yaml was not re-derived from upstream"
+fi
+
+if python3 ai2/derive_workflows.py --check --upstream upstream/main > /dev/null 2>&1; then
+  pass "derive_workflows --check clean"
+else
+  fail "derive_workflows --check failed"
+fi
+
+if git diff --quiet upstream/main ai2-main -- .github/workflows/ci.yml; then
+  pass "upstream's ci.yml is unchanged on ai2-main"
+else
+  fail "ai2-main modified upstream's ci.yml"
 fi
 
 behind="$(git rev-list --count ai2-main..upstream/main)"
