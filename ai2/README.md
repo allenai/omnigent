@@ -171,6 +171,16 @@ first time. A workflow that upstream adds runs once on the fork before
 `--disable-upstream` can disable it. `sync-upstream.sh` runs `--disable-upstream`
 before each sync and after `--push`.
 
+### Merge gate
+
+`.github/workflows/ai2-merge-gate.yaml` is written by hand, not derived. Most
+`ai2-*` workflows have path filters, so a required check on one of them waits
+forever on a pull request that does not trigger it. The gate runs on every pull
+request into `ai2-main`, waits for the `ai2-*` workflows that ran on the commit,
+and fails if any did not pass. Require only the `Ai2 merge gate` check.
+
+After you re-run a failed workflow by hand, re-run the gate too.
+
 ## What needs a notice
 
 Only files that **differ from upstream**. Files Ai2 **added** are its own work

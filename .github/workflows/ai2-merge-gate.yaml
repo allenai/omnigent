@@ -1,0 +1,51 @@
+# Ai2 fork: the one check to require for pull requests into ai2-main. Most
+# ai2-* workflows have path filters, so this waits for whichever of them ran on
+# the commit and fails if any did not pass.
+name: Ai2 merge gate
+
+on:
+  pull_request:
+    branches: [ai2-main]
+    # labeled/unlabeled re-evaluate the gate after a skip-security-scan waiver.
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+permissions:
+  actions: read
+
+concurrency:
+  group: ai2-merge-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  merge-gate:
+    name: Ai2 merge gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Wait for the ai2-* workflows on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SELF: ${{ github.workflow_ref }}
+        run: |
+          set -euo pipefail
+          self_path="${SELF#*/*/}"; self_path="${self_path%@*}"
+          sleep 60  # let every triggered run be created
+          while true; do
+            # Newest pull_request run of each ai2-* workflow, except this gate.
+            latest=$(gh api --paginate \
+              "repos/$REPO/actions/runs?head_sha=$HEAD_SHA&event=pull_request&per_page=100" \
+              --jq '.workflow_runs[]' | jq -s --arg self "$self_path" '
+                [.[] | select((.path | startswith(".github/workflows/ai2-")) and .path != $self)]
+                | group_by(.path) | map(max_by([.created_at, .id]))')
+            total=$(jq length <<<"$latest")
+            pending=$(jq '[.[] | select(.status != "completed")] | length' <<<"$latest")
+            [ "$total" -gt 0 ] || { echo "::error::no ai2-* runs found for $HEAD_SHA"; exit 1; }
+            [ "$pending" -eq 0 ] && break
+            echo "waiting on $pending of $total"
+            sleep 30
+          done
+          jq -r '.[] | "\(.conclusion)\t\(.name)\t\(.html_url)"' <<<"$latest"
+          failed=$(jq '[.[] | select(.conclusion | IN("success","skipped","neutral") | not)] | length' <<<"$latest")
+          [ "$failed" -eq 0 ] || { echo "::error::$failed ai2-* workflow(s) did not pass"; exit 1; }
