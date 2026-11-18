@@ -12,6 +12,8 @@ Do not do their work by hand. Do not write their output from memory.
 | Write or edit the fork notice in `README.md` | `python3 ai2/apply_notice.py` |
 | Type the section 4(b) notice line | `python3 ai2/check_modified_notices.py --notice-for <path>` |
 | Decide which files need a notice | `python3 ai2/check_modified_notices.py --worktree` |
+| Write or edit an `ai2-*.yaml` workflow copy | `python3 ai2/derive_workflows.py` |
+| Disable upstream workflows on the fork | `python3 ai2/derive_workflows.py --disable-upstream` |
 | Merge or rebase upstream | `ai2/sync-upstream.sh` |
 | Resolve a `README.md` conflict | `ai2/sync-upstream.sh` resolves it |
 | Test a change to these scripts | `ai2/test-sync-upstream.sh` |
@@ -29,6 +31,9 @@ The notice text has one source: `NOTICE_TEXT` in
 - Add the section 4(b) notice to each upstream file that you change. A file
   that you add does not need the notice.
 - Push `ai2-main` with `--force-with-lease`. The sync rebases that branch.
+- Do not delete or edit upstream files in `.github/workflows/`. Upstream tests
+  read them. To stop an upstream workflow, disable it with
+  `python3 ai2/derive_workflows.py --disable-upstream`.
 
 ## More commands
 
